@@ -1,0 +1,7 @@
+.env
+cookies.txt
+__pycache__/
+downloads/
+test_*.py
+test.txt
+*.pyc
