@@ -1,0 +1,7 @@
+python-telegram-bot>=20.0
+yt-dlp
+google-genai
+requests
+python-dotenv
+gallery-dl
+Pillow
