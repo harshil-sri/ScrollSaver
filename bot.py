@@ -9,6 +9,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQu
 from downloader import download_media
 from ai_processor import process_media
 from db_client import add_to_notion, check_if_exists
+from keep_alive import keep_alive
 
 load_dotenv()
 
@@ -207,6 +208,7 @@ def main() -> None:
     application.add_handler(conv_handler)
 
     print("ScrollSaver Bot is running...")
+    keep_alive()
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == '__main__':
