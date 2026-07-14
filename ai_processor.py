@@ -126,7 +126,7 @@ def process_media(file_paths: list[str], category: str, content_type: str, custo
     final_prompt = system_prompt + "\n\nCRITICAL: YOU MUST OUTPUT ONLY VALID RAW JSON. Do NOT wrap it in markdown block quotes (```json ... ```). OUTPUT RAW JSON ONLY.\n\n" + user_prompt
     
     payload = {
-        "model": "google/gemini-2.0-flash-lite-preview-02-05:free",
+        "model": "openai/gpt-oss-120b:free",
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": final_prompt}
