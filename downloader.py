@@ -8,8 +8,9 @@ def run_yt_dlp(url: str) -> list[str]:
         'outtmpl': 'downloads/%(id)s_%(epoch)d.%(ext)s',
         'quiet': True,
     }
-    if os.path.exists("cookies.txt"):
-        ydl_opts['cookiefile'] = "cookies.txt"
+    cookie_path = "/etc/secrets/cookies.txt" if os.path.exists("/etc/secrets/cookies.txt") else "cookies.txt"
+    if os.path.exists(cookie_path):
+        ydl_opts['cookiefile'] = cookie_path
         
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
@@ -21,8 +22,9 @@ def run_yt_dlp(url: str) -> list[str]:
 
 def run_gallery_dl(url: str) -> list[str]:
     cmd = ["gallery-dl", url, "-d", "downloads"]
-    if os.path.exists("cookies.txt"):
-        cmd.extend(["--cookies", "cookies.txt"])
+    cookie_path = "/etc/secrets/cookies.txt" if os.path.exists("/etc/secrets/cookies.txt") else "cookies.txt"
+    if os.path.exists(cookie_path):
+        cmd.extend(["--cookies", cookie_path])
         
     result = subprocess.run(cmd, capture_output=True, text=True, check=True)
     downloaded_files = []
