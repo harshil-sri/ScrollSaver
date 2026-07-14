@@ -11,9 +11,8 @@ def process_media(file_paths: list[str], category: str, content_type: str, custo
     import requests
     import json
     import time
-    import tempfile
-    import subprocess
-    import pytesseract
+    import cv2
+    from rapidocr_onnxruntime import RapidOCR
     from PIL import Image
     
     gemini_contents = []
@@ -37,22 +36,36 @@ def process_media(file_paths: list[str], category: str, content_type: str, custo
     
     if video_paths:
         try:
-            with tempfile.TemporaryDirectory() as temp_dir:
-                for vp in video_paths:
-                    # Extract 1 frame every 2 seconds
-                    subprocess.run(["ffmpeg", "-i", vp, "-vf", "fps=1/2", f"{temp_dir}/frame_%04d.jpg"], check=True, capture_output=True)
+            ocr = RapidOCR()
+            seen_texts = set()
+            for vp in video_paths:
+                cap = cv2.VideoCapture(vp)
+                fps = cap.get(cv2.CAP_PROP_FPS)
+                if not fps or fps <= 0:
+                    fps = 30
                     
-                # Run OCR on all extracted frames
-                frame_files = sorted([os.path.join(temp_dir, f) for f in os.listdir(temp_dir) if f.endswith(".jpg")])
-                seen_texts = set()
-                for frame_file in frame_files:
-                    text = pytesseract.image_to_string(Image.open(frame_file)).strip()
-                    # Keep texts that have some actual characters to reduce noise, dedup
-                    if text and len(text) > 3 and text not in seen_texts:
-                        seen_texts.add(text)
-                        ocr_text += text + "\n---\n"
+                frame_interval = int(fps * 2) # 1 frame every 2 seconds
+                frame_count = 0
+                
+                while cap.isOpened():
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
+                        
+                    if frame_count % frame_interval == 0:
+                        # Extract OCR directly from BGR frame
+                        result, _ = ocr(frame)
+                        if result:
+                            # result is a list of tuples: (box, text, score)
+                            frame_text = " ".join([res[1] for res in result if res[2] > 0.5])
+                            if frame_text and len(frame_text) > 3 and frame_text not in seen_texts:
+                                seen_texts.add(frame_text)
+                                ocr_text += frame_text + "\n---\n"
+                                
+                    frame_count += 1
+                cap.release()
         except Exception as e:
-            print(f"OCR/FFMPEG Error: {e}")
+            print(f"OCR Error: {e}")
 
     transcription_prompt = "You are an AI that understands media. If this is audio/video, provide a verbatim word-for-word transcript. If these are images, extract all text and describe any tools or recipes shown in them."
 
