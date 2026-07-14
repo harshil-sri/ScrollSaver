@@ -39,7 +39,7 @@ def process_media(file_paths: list[str], category: str, content_type: str, custo
             with open(ap, "rb") as audio_file:
                 files = {"file": (os.path.basename(ap), audio_file)}
                 data = {"model": "whisper-large-v3-turbo", "response_format": "text"}
-                res_groq = requests.post("https://api.groq.com/openai/v1/audio/transcriptions", headers=headers, files=files, data=data)
+                res_groq = requests.post("https://api.groq.com/openai/v1/audio/translations", headers=headers, files=files, data=data)
                 res_groq.raise_for_status()
                 transcript += res_groq.text + "\n"
 

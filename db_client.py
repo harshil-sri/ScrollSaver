@@ -64,20 +64,28 @@ def add_to_notion(category: str, data: dict, video_url: str):
             "url": str(resolved_url).strip()
         }
 
+    def _format_text(val) -> str:
+        if isinstance(val, list):
+            return "\n".join(f"- {item}" for item in val)
+        elif isinstance(val, dict):
+            import json
+            return json.dumps(val, ensure_ascii=False)
+        return str(val)
+
     # Custom properties based on category
     if category == "Tech":
         if "Description" in data:
             properties["Description"] = {
-                "rich_text": [{"text": {"content": data["Description"][:2000]}}]
+                "rich_text": [{"text": {"content": _format_text(data["Description"])[:2000]}}]
             }
     elif category == "Recipe":
         if "Ingredients" in data:
             properties["Ingredients"] = {
-                "rich_text": [{"text": {"content": data["Ingredients"][:2000]}}]
+                "rich_text": [{"text": {"content": _format_text(data["Ingredients"])[:2000]}}]
             }
         if "Instructions" in data:
             properties["Instructions"] = {
-                "rich_text": [{"text": {"content": data["Instructions"][:2000]}}]
+                "rich_text": [{"text": {"content": _format_text(data["Instructions"])[:2000]}}]
             }
 
     payload = {
