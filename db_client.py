@@ -55,9 +55,13 @@ def add_to_notion(category: str, data: dict, video_url: str):
     }
     
     # URL property
-    if "URL" in data or video_url:
+    resolved_url = data.get("URL")
+    if not resolved_url and video_url:
+        resolved_url = video_url
+        
+    if resolved_url and str(resolved_url).strip():
         properties["URL"] = {
-            "url": data.get("URL") or video_url
+            "url": str(resolved_url).strip()
         }
 
     # Custom properties based on category
