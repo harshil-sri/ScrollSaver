@@ -7,25 +7,53 @@ from google import genai
 load_dotenv()
 client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 
-def process_media(file_paths: list[str], category: str, content_type: str, custom_instructions: str = None) -> dict:
+def process_media(file_paths: list[str], category: str, content_type: str, custom_instructions: str = None, caption_text: str = "") -> dict:
     import requests
     import json
     import time
+    import tempfile
+    import subprocess
+    import pytesseract
     from PIL import Image
     
     gemini_contents = []
     audio_paths = []
+    video_paths = []
     
     if file_paths:
         for fp in file_paths:
             ext = fp.lower()
             if ext.endswith(('.jpg', '.jpeg', '.png', '.webp')):
                 gemini_contents.append(Image.open(fp))
+            elif ext.endswith(('.mp4', '.webm', '.mkv', '.mov')):
+                audio_paths.append(fp)
+                video_paths.append(fp)
             else:
                 audio_paths.append(fp)
             
     # STEP 1: Understanding / Transcription
     transcript = ""
+    ocr_text = ""
+    
+    if video_paths:
+        try:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                for vp in video_paths:
+                    # Extract 1 frame every 2 seconds
+                    subprocess.run(["ffmpeg", "-i", vp, "-vf", "fps=1/2", f"{temp_dir}/frame_%04d.jpg"], check=True, capture_output=True)
+                    
+                # Run OCR on all extracted frames
+                frame_files = sorted([os.path.join(temp_dir, f) for f in os.listdir(temp_dir) if f.endswith(".jpg")])
+                seen_texts = set()
+                for frame_file in frame_files:
+                    text = pytesseract.image_to_string(Image.open(frame_file)).strip()
+                    # Keep texts that have some actual characters to reduce noise, dedup
+                    if text and len(text) > 3 and text not in seen_texts:
+                        seen_texts.add(text)
+                        ocr_text += text + "\n---\n"
+        except Exception as e:
+            print(f"OCR/FFMPEG Error: {e}")
+
     transcription_prompt = "You are an AI that understands media. If this is audio/video, provide a verbatim word-for-word transcript. If these are images, extract all text and describe any tools or recipes shown in them."
 
     if audio_paths:
@@ -106,10 +134,17 @@ def process_media(file_paths: list[str], category: str, content_type: str, custo
     extraction_prompt = cat_prompts.get(content_type, cat_prompts["Tool"])
     system_prompt = f"{extraction_prompt}\nCRITICAL: Return ONLY a SINGLE JSON object representing the PRIMARY subject. Do not return a list. Do not return multiple objects."
     
-    user_prompt = f"Media Content/Transcript:\n{transcript}\n\n"
+    user_prompt = "Below are the extracted text sources from the media. The tool or recipe name might be in any one of these (e.g. spoken, written in the caption, or burned into the video as on-screen text). Please combine context from ALL sources to answer accurately.\n\n"
+    if caption_text:
+        user_prompt += f"--- CAPTION / DESCRIPTION ---\n{caption_text}\n\n"
+    if transcript:
+        user_prompt += f"--- AUDIO TRANSCRIPTION ---\n{transcript}\n\n"
+    if ocr_text:
+        user_prompt += f"--- ON-SCREEN TEXT (OCR) ---\n{ocr_text}\n\n"
+        
     if custom_instructions and custom_instructions.lower() != "skip":
         user_prompt += f"USER CUSTOM INSTRUCTIONS: {custom_instructions}\n"
-        user_prompt += f"CRITICAL INSTRUCTION: If there is a contradiction between the transcript and the User Custom Instructions (e.g. phonetics like Ruflo vs RouteLLM), YOU MUST ABSOLUTELY TRUST THE USER CUSTOM INSTRUCTIONS. The user is always right.\n\n"
+        user_prompt += f"CRITICAL INSTRUCTION: If there is a contradiction between the transcript/OCR and the User Custom Instructions, YOU MUST ABSOLUTELY TRUST THE USER CUSTOM INSTRUCTIONS. The user is always right.\n\n"
         
     if search_results:
         user_prompt += f"{search_results}\n"

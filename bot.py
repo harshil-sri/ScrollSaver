@@ -123,11 +123,11 @@ async def handle_instructions(update: Update, context: ContextTypes.DEFAULT_TYPE
         else:
             # 1. Download
             await context.bot.edit_message_text(chat_id=target_msg.chat_id, message_id=target_msg.message_id, text="📥 Downloading media... (~10-15s)")
-            audio_paths = download_media(url)
+            audio_paths, caption_text = download_media(url)
             
             # 2. Process
             await context.bot.edit_message_text(chat_id=target_msg.chat_id, message_id=target_msg.message_id, text="🧠 Analyzing content with AI... (~5-10s)")
-            data = process_media(audio_paths, category, content_type, instructions)
+            data = process_media(audio_paths, category, content_type, instructions, caption_text)
             
         # 3. Save
         if check_if_exists(category, data.get("Name", "")):

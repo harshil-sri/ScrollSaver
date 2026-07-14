@@ -6,3 +6,4 @@ python-dotenv
 gallery-dl
 Pillow
 flask
+pytesseract
