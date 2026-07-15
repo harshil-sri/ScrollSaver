@@ -7,7 +7,7 @@ from google import genai
 load_dotenv()
 client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 
-def process_media(file_paths: list[str], category: str, content_type: str, custom_instructions: str = None, caption_text: str = "") -> dict:
+def process_media(file_paths: list[str], category: str, content_type: str, custom_instructions: str = None, caption_text: str = "", extract_frames: bool = False) -> dict:
     import requests
     import json
     import time
@@ -33,7 +33,7 @@ def process_media(file_paths: list[str], category: str, content_type: str, custo
     transcript = ""
     ocr_text = ""
     
-    if video_paths:
+    if video_paths and extract_frames:
         try:
             for vp in video_paths:
                 cap = cv2.VideoCapture(vp)

@@ -19,7 +19,7 @@ logging.basicConfig(
 warnings.filterwarnings("ignore", category=PTBUserWarning)
 
 # States
-CATEGORY, CONTENT_TYPE, CUSTOM_INSTRUCTIONS, MANUAL_FALLBACK = range(4)
+CATEGORY, CONTENT_TYPE, EXTRACT_FRAMES, CUSTOM_INSTRUCTIONS, MANUAL_FALLBACK = range(5)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text('Hello! I am ScrollSaver. Send me an Instagram Reel or YouTube link to get started.')
@@ -85,11 +85,30 @@ async def content_type_callback(update: Update, context: ContextTypes.DEFAULT_TY
     content_type = query.data
     context.user_data['content_type'] = content_type
     
+    keyboard = [
+        [InlineKeyboardButton("✅ Yes (Extract Frames)", callback_data='yes_frames')],
+        [InlineKeyboardButton("⚡ No (Fast Audio Only)", callback_data='no_frames')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(
+        text=f"Selected: {content_type}\n\nDo you want to extract text from the video frames? (Takes longer, but good for music-only reels)",
+        reply_markup=reply_markup
+    )
+    return EXTRACT_FRAMES
+
+async def extract_frames_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+    
+    extract_frames = (query.data == 'yes_frames')
+    context.user_data['extract_frames'] = extract_frames
+    
     keyboard = [[InlineKeyboardButton("⏭️ Skip Custom Instructions", callback_data='skip_instructions')]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await query.edit_message_text(
-        text=f"Selected: {context.user_data['category']} -> {content_type}\n\nAny custom instructions? (e.g., 'Only extract the dessert recipe').\n\nType your instructions below, or click Skip.",
+        text=f"Selected: {context.user_data['category']} -> {context.user_data['content_type']} -> {'Extract Frames' if extract_frames else 'Fast Audio'}\n\nAny custom instructions? (e.g., 'Only extract the dessert recipe').\n\nType your instructions below, or click Skip.",
         reply_markup=reply_markup
     )
     return CUSTOM_INSTRUCTIONS
@@ -111,6 +130,7 @@ async def handle_instructions(update: Update, context: ContextTypes.DEFAULT_TYPE
     url = context.user_data.get('url', '')
     category = context.user_data['category']
     content_type = context.user_data['content_type']
+    extract_frames = context.user_data.get('extract_frames', False)
     custom_direct = context.user_data.get('custom_direct')
     audio_paths = []
     
@@ -119,7 +139,7 @@ async def handle_instructions(update: Update, context: ContextTypes.DEFAULT_TYPE
             await context.bot.edit_message_text(chat_id=target_msg.chat_id, message_id=target_msg.message_id, text="🧠 Analyzing custom entry with AI... (~5-10s)")
             # Override instructions to ensure Tavily + AI knows what to search for
             instructions = f"The user manually inputted this: {custom_direct}. User custom instructions: {instructions}"
-            data = process_media([], category, content_type, instructions)
+            data = process_media([], category, content_type, instructions, extract_frames=False)
         else:
             # 1. Download
             await context.bot.edit_message_text(chat_id=target_msg.chat_id, message_id=target_msg.message_id, text="📥 Downloading media... (~10-15s)")
@@ -127,7 +147,7 @@ async def handle_instructions(update: Update, context: ContextTypes.DEFAULT_TYPE
             
             # 2. Process
             await context.bot.edit_message_text(chat_id=target_msg.chat_id, message_id=target_msg.message_id, text="🧠 Analyzing content with AI... (~5-10s)")
-            data = process_media(audio_paths, category, content_type, instructions, caption_text)
+            data = process_media(audio_paths, category, content_type, instructions, caption_text, extract_frames)
             
         # 3. Save
         if check_if_exists(category, data.get("Name", "")):
@@ -195,6 +215,7 @@ def main() -> None:
         states={
             CATEGORY: [CallbackQueryHandler(category_callback)],
             CONTENT_TYPE: [CallbackQueryHandler(content_type_callback)],
+            EXTRACT_FRAMES: [CallbackQueryHandler(extract_frames_callback)],
             CUSTOM_INSTRUCTIONS: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_instructions),
                 CallbackQueryHandler(handle_instructions, pattern='^skip_instructions$')
