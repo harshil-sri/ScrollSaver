@@ -6,5 +6,4 @@ python-dotenv
 gallery-dl
 Pillow
 flask
-rapidocr-onnxruntime
 opencv-python-headless
