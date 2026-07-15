@@ -55,9 +55,19 @@ def add_to_notion(category: str, data: dict, video_url: str):
     }
     
     # URL property
-    resolved_url = data.get("URL")
-    if not resolved_url and video_url:
+    resolved_url = data.get("URL", "")
+    
+    is_valid = isinstance(resolved_url, str) and len(resolved_url.strip()) > 3
+    if is_valid:
+        url_lower = resolved_url.lower().strip()
+        # If it has spaces or common hallucinated placeholder words, it's not a real URL
+        if " " in url_lower or "not" in url_lower or "n/a" in url_lower or "unknown" in url_lower:
+            is_valid = False
+            
+    if not is_valid:
         resolved_url = video_url
+    elif not resolved_url.strip().startswith("http"):
+        resolved_url = f"https://{resolved_url.strip()}"
         
     if resolved_url and str(resolved_url).strip():
         properties["URL"] = {
