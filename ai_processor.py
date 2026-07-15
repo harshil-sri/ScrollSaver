@@ -12,7 +12,6 @@ def process_media(file_paths: list[str], category: str, content_type: str, custo
     import json
     import time
     import cv2
-    from rapidocr_onnxruntime import RapidOCR
     from PIL import Image
     
     gemini_contents = []
@@ -36,36 +35,31 @@ def process_media(file_paths: list[str], category: str, content_type: str, custo
     
     if video_paths:
         try:
-            ocr = RapidOCR()
-            seen_texts = set()
             for vp in video_paths:
                 cap = cv2.VideoCapture(vp)
                 fps = cap.get(cv2.CAP_PROP_FPS)
                 if not fps or fps <= 0:
                     fps = 30
-                    
-                frame_interval = int(fps * 2) # 1 frame every 2 seconds
-                frame_count = 0
+                frame_interval = int(fps * 3) # 1 frame every 3 seconds
                 
-                while cap.isOpened():
-                    ret, frame = cap.read()
-                    if not ret:
-                        break
-                        
-                    if frame_count % frame_interval == 0:
-                        # Extract OCR directly from BGR frame
-                        result, _ = ocr(frame)
-                        if result:
-                            # result is a list of tuples: (box, text, score)
-                            frame_text = " ".join([res[1] for res in result if res[2] > 0.5])
-                            if frame_text and len(frame_text) > 3 and frame_text not in seen_texts:
-                                seen_texts.add(frame_text)
-                                ocr_text += frame_text + "\n---\n"
-                                
-                    frame_count += 1
+                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                if total_frames > 0:
+                    for idx in range(0, total_frames, frame_interval):
+                        cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+                        ret, frame = cap.read()
+                        if ret:
+                            # Resize to max 800px width/height to save memory/API payload
+                            h, w = frame.shape[:2]
+                            scale = min(800/w, 800/h)
+                            if scale < 1:
+                                frame = cv2.resize(frame, (int(w*scale), int(h*scale)))
+                            # Convert to PIL Image for Gemini
+                            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                            pil_img = Image.fromarray(rgb_frame)
+                            gemini_contents.append(pil_img)
                 cap.release()
         except Exception as e:
-            print(f"OCR Error: {e}")
+            print(f"Frame Extraction Error: {e}")
 
     transcription_prompt = "You are an AI that understands media. If this is audio/video, provide a verbatim word-for-word transcript. If these are images, extract all text and describe any tools or recipes shown in them."
 
@@ -151,9 +145,7 @@ def process_media(file_paths: list[str], category: str, content_type: str, custo
     if caption_text:
         user_prompt += f"--- CAPTION / DESCRIPTION ---\n{caption_text}\n\n"
     if transcript:
-        user_prompt += f"--- AUDIO TRANSCRIPTION ---\n{transcript}\n\n"
-    if ocr_text:
-        user_prompt += f"--- ON-SCREEN TEXT (OCR) ---\n{ocr_text}\n\n"
+        user_prompt += f"--- AUDIO TRANSCRIPTION AND GEMINI VISION ---\n{transcript}\n\n"
         
     if custom_instructions and custom_instructions.lower() != "skip":
         user_prompt += f"USER CUSTOM INSTRUCTIONS: {custom_instructions}\n"
