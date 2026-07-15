@@ -182,24 +182,28 @@ def process_media(file_paths: list[str], category: str, content_type: str, custo
         ]
     }
     
-    res_or = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=30)
-    res_or.raise_for_status()
-    
-    text = res_or.json()["choices"][0]["message"]["content"].strip()
-    
-    # Clean markdown if the model hallucinated it anyway
-    if text.startswith("```json"):
-        text = text[7:]
-    if text.startswith("```"):
-        text = text[3:]
-    if text.endswith("```"):
-        text = text[:-3]
-    text = text.strip()
-    
-    try:
-        data = json.loads(text)
-        if isinstance(data, list) and len(data) > 0:
-            data = data[0] # Grab the first object just in case it ignored instructions
-        return data
-    except json.JSONDecodeError as e:
-        raise Exception(f"Failed to parse JSON. Raw output: {text[:100]}") from e
+    for attempt in range(3):
+        res_or = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=30)
+        res_or.raise_for_status()
+        
+        text = res_or.json()["choices"][0]["message"]["content"].strip()
+        
+        # Clean markdown if the model hallucinated it anyway
+        if text.startswith("```json"):
+            text = text[7:]
+        if text.startswith("```"):
+            text = text[3:]
+        if text.endswith("```"):
+            text = text[:-3]
+        text = text.strip()
+        
+        try:
+            data = json.loads(text)
+            if isinstance(data, list) and len(data) > 0:
+                data = data[0] # Grab the first object just in case it ignored instructions
+            return data
+        except json.JSONDecodeError as e:
+            if attempt == 2:
+                raise Exception(f"Failed to parse JSON. Raw output: {text[:100]}") from e
+            print(f"JSON parsing failed, retrying... Output was: {text}")
+            time.sleep(2)
