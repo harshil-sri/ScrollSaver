@@ -1,6 +1,7 @@
 import os
 import logging
 import warnings
+import re
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.warnings import PTBUserWarning
@@ -33,16 +34,15 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             await update.message.reply_text("Please provide the tool name: e.g., 'custom RouteLLM'")
             return ConversationHandler.END
             
-        context.user_data['url'] = ''
+        context.user_data['bulk_urls'] = []
         context.user_data['custom_direct'] = tool_name
-    elif "http" not in text:
-        await update.message.reply_text("Please send a valid URL, or type 'custom <tool name>'.")
-        return ConversationHandler.END
     else:
-        context.user_data['url'] = text
+        urls = re.findall(r'(https?://[^\s]+)', text)
+        if not urls:
+            await update.message.reply_text("Please send a valid URL, or type 'custom <tool name>'.")
+            return ConversationHandler.END
+        context.user_data['bulk_urls'] = urls
         context.user_data['custom_direct'] = None
-        
-    context.user_data['local_file'] = ""
     
     keyboard = [
         [
@@ -127,49 +127,53 @@ async def handle_instructions(update: Update, context: ContextTypes.DEFAULT_TYPE
         
     context.user_data['instructions'] = instructions
     
-    url = context.user_data.get('url', '')
+    bulk_urls = context.user_data.get('bulk_urls', [])
     category = context.user_data['category']
     content_type = context.user_data['content_type']
     extract_frames = context.user_data.get('extract_frames', False)
     custom_direct = context.user_data.get('custom_direct')
-    audio_paths = []
     
-    try:
-        if custom_direct:
+    if custom_direct:
+        try:
             await context.bot.edit_message_text(chat_id=target_msg.chat_id, message_id=target_msg.message_id, text="🧠 Analyzing custom entry with AI... (~5-10s)")
-            # Override instructions to ensure Tavily + AI knows what to search for
-            instructions = f"The user manually inputted this: {custom_direct}. User custom instructions: {instructions}"
-            data = process_media([], category, content_type, instructions, extract_frames=False)
-        else:
-            # 1. Download
-            await context.bot.edit_message_text(chat_id=target_msg.chat_id, message_id=target_msg.message_id, text="📥 Downloading media... (~10-15s)")
-            audio_paths, caption_text = download_media(url)
-            
-            # 2. Process
-            await context.bot.edit_message_text(chat_id=target_msg.chat_id, message_id=target_msg.message_id, text="🧠 Analyzing content with AI... (~5-10s)")
-            data = process_media(audio_paths, category, content_type, instructions, caption_text, extract_frames)
-            
-        # 3. Save
-        if check_if_exists(category, data.get("Name", "")):
-            await context.bot.edit_message_text(chat_id=target_msg.chat_id, message_id=target_msg.message_id, text=f"⏭️ Skipped: '{data.get('Name')}' already exists in Notion.")
-        else:
-            await context.bot.edit_message_text(chat_id=target_msg.chat_id, message_id=target_msg.message_id, text=f"💾 Pushing '{data.get('Name')}' to Notion...")
-            add_to_notion(category, data, url)
-            await context.bot.edit_message_text(chat_id=target_msg.chat_id, message_id=target_msg.message_id, text=f"✅ Successfully saved '{data.get('Name')}' to Notion!")
-        
-        # Cleanup
-        for p in audio_paths:
-            if os.path.exists(p):
-                os.remove(p)
+            instructions_final = f"The user manually inputted this: {custom_direct}. User custom instructions: {instructions}"
+            data = process_media([], category, content_type, instructions_final, extract_frames=False)
+            if check_if_exists(category, data.get("Name", "")):
+                await context.bot.edit_message_text(chat_id=target_msg.chat_id, message_id=target_msg.message_id, text=f"⏭️ Skipped: '{data.get('Name')}' already exists in Notion.")
+            else:
+                await context.bot.edit_message_text(chat_id=target_msg.chat_id, message_id=target_msg.message_id, text=f"💾 Pushing '{data.get('Name')}' to Notion...")
+                add_to_notion(category, data, "")
+                await context.bot.edit_message_text(chat_id=target_msg.chat_id, message_id=target_msg.message_id, text=f"✅ Successfully saved '{data.get('Name')}' to Notion!")
+        except Exception as e:
+            logging.error(f"Manual Entry Error: {e}")
+            await context.bot.edit_message_text(chat_id=target_msg.chat_id, message_id=target_msg.message_id, text=f"❌ Error: {str(e)}")
+    else:
+        total = len(bulk_urls)
+        success_count = 0
+        for i, url in enumerate(bulk_urls, 1):
+            audio_paths = []
+            try:
+                await context.bot.edit_message_text(chat_id=target_msg.chat_id, message_id=target_msg.message_id, text=f"📥 Downloading media ({i}/{total})... (~10-15s)")
+                audio_paths, caption_text = download_media(url)
                 
-    except Exception as e:
-        logging.error(f"Download/Process Error: {e}")
-        await context.bot.edit_message_text(
-            chat_id=target_msg.chat_id, 
-            message_id=target_msg.message_id, 
-            text=f"❌ An error occurred while processing:\n`{str(e)}`\n\nIf the download failed, you can just type the name of the tool or recipe you saw, and I will search for it and save it anyway. (Or type /cancel)"
-        )
-        return MANUAL_FALLBACK
+                await context.bot.edit_message_text(chat_id=target_msg.chat_id, message_id=target_msg.message_id, text=f"🧠 Analyzing content with AI ({i}/{total})... (~5-10s)")
+                data = process_media(audio_paths, category, content_type, instructions, caption_text, extract_frames)
+                
+                if check_if_exists(category, data.get("Name", "")):
+                    await context.bot.edit_message_text(chat_id=target_msg.chat_id, message_id=target_msg.message_id, text=f"⏭️ Skipped: '{data.get('Name')}' already exists. ({i}/{total})")
+                else:
+                    await context.bot.edit_message_text(chat_id=target_msg.chat_id, message_id=target_msg.message_id, text=f"💾 Pushing '{data.get('Name')}' to Notion... ({i}/{total})")
+                    add_to_notion(category, data, url)
+                    success_count += 1
+            except Exception as e:
+                logging.error(f"Batch Error on {url}: {e}")
+                await context.bot.send_message(chat_id=target_msg.chat_id, text=f"❌ Error on link {i}: {str(e)}")
+            finally:
+                for p in audio_paths:
+                    if os.path.exists(p):
+                        os.remove(p)
+                        
+        await context.bot.edit_message_text(chat_id=target_msg.chat_id, message_id=target_msg.message_id, text=f"✅ Batch complete! Saved {success_count}/{total} links.")
         
     return ConversationHandler.END
 
