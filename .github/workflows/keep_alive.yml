@@ -10,5 +10,5 @@ jobs:
     steps:
       - name: Ping Render URL
         run: |
-          curl -s https://your-bot-app.onrender.com > /dev/null
+          curl -s https://scrollsaver.onrender.com > /dev/null
           echo "Pinged Render URL to keep alive!"
