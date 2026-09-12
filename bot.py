@@ -150,11 +150,14 @@ async def handle_instructions(update: Update, context: ContextTypes.DEFAULT_TYPE
     else:
         total = len(bulk_urls)
         success_count = 0
+        import uuid
+        import shutil
         for i, url in enumerate(bulk_urls, 1):
             audio_paths = []
+            unique_dir = os.path.join("downloads", uuid.uuid4().hex)
             try:
                 await context.bot.edit_message_text(chat_id=target_msg.chat_id, message_id=target_msg.message_id, text=f"📥 Downloading media ({i}/{total})... (~10-15s)")
-                audio_paths, caption_text = download_media(url)
+                audio_paths, caption_text = download_media(url, out_dir=unique_dir)
                 
                 await context.bot.edit_message_text(chat_id=target_msg.chat_id, message_id=target_msg.message_id, text=f"🧠 Analyzing content with AI ({i}/{total})... (~5-10s)")
                 data = process_media(audio_paths, category, content_type, instructions, caption_text, extract_frames)
@@ -169,9 +172,8 @@ async def handle_instructions(update: Update, context: ContextTypes.DEFAULT_TYPE
                 logging.error(f"Batch Error on {url}: {e}")
                 await context.bot.send_message(chat_id=target_msg.chat_id, text=f"❌ Error on link {i}: {str(e)}")
             finally:
-                for p in audio_paths:
-                    if os.path.exists(p):
-                        os.remove(p)
+                if os.path.exists(unique_dir):
+                    shutil.rmtree(unique_dir)
                         
         await context.bot.edit_message_text(chat_id=target_msg.chat_id, message_id=target_msg.message_id, text=f"✅ Batch complete! Saved {success_count}/{total} links.")
         
