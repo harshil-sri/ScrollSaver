@@ -24,8 +24,9 @@ def run_yt_dlp(url: str) -> tuple[list[str], str]:
                 return [expected_filename], caption
     return [], ""
 
+import sys
 def run_gallery_dl(url: str) -> tuple[list[str], str]:
-    cmd = ["gallery-dl", url, "-d", "downloads", "--write-metadata"]
+    cmd = [sys.executable, "-m", "gallery_dl", url, "-d", "downloads", "--write-metadata"]
     cookie_path = "/etc/secrets/cookies.txt" if os.path.exists("/etc/secrets/cookies.txt") else "cookies.txt"
     if os.path.exists(cookie_path):
         cmd.extend(["--cookies", cookie_path])
