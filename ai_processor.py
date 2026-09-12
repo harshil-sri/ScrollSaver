@@ -96,19 +96,41 @@ def process_media(file_paths: list[str], category: str, content_type: str, custo
 
     if gemini_contents:
         # Gemini Vision for Images
-        for attempt in range(3):
-            try:
-                res_understand = client.models.generate_content(
-                    model="gemini-3.5-flash",
-                    contents=gemini_contents + [transcription_prompt]
-                )
-                transcript += res_understand.text.strip() + "\n"
+        fallback_models = [
+            "gemini-3.5-flash",
+            "gemini-3.6-flash",
+            "gemini-3.7-flash",
+            "gemini-3.8-flash",
+            "gemini-2.5-flash",
+            "gemini-2.5-pro"
+        ]
+        
+        success = False
+        last_error = None
+        
+        for model_name in fallback_models:
+            for attempt in range(2):
+                try:
+                    res_understand = client.models.generate_content(
+                        model=model_name,
+                        contents=gemini_contents + [transcription_prompt]
+                    )
+                    transcript += res_understand.text.strip() + "\n"
+                    success = True
+                    break
+                except Exception as e:
+                    last_error = e
+                    err_str = str(e)
+                    if ("429" in err_str or "503" in err_str) and attempt == 0:
+                        time.sleep(2)
+                        continue
+                    break # Break inner loop, move to next model
+                    
+            if success:
                 break
-            except Exception as e:
-                if "429" in str(e) and attempt < 2:
-                    time.sleep(30)
-                else:
-                    raise e
+                
+        if not success:
+            raise Exception(f"All Gemini fallback models failed. Last error: {last_error}")
         
     # STEP 2: Web Grounding (Tavily Search)
     search_results = ""
