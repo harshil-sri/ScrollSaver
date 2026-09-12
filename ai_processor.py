@@ -21,13 +21,15 @@ def process_media(file_paths: list[str], category: str, content_type: str, custo
     if file_paths:
         for fp in file_paths:
             ext = fp.lower()
-            if ext.endswith(('.jpg', '.jpeg', '.png', '.webp')):
-                gemini_contents.append(Image.open(fp))
-            elif ext.endswith(('.mp4', '.webm', '.mkv', '.mov')):
+            if ext.endswith(('.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif')):
+                try:
+                    gemini_contents.append(Image.open(fp))
+                except Exception:
+                    pass
+            elif ext.endswith(('.mp4', '.webm', '.mkv', '.mov', '.mp3', '.wav', '.m4a', '.ogg', '.flac')):
                 audio_paths.append(fp)
-                video_paths.append(fp)
-            else:
-                audio_paths.append(fp)
+                if ext.endswith(('.mp4', '.webm', '.mkv', '.mov')):
+                    video_paths.append(fp)
             
     # STEP 1: Understanding / Transcription
     transcript = ""
@@ -83,8 +85,14 @@ def process_media(file_paths: list[str], category: str, content_type: str, custo
                     "prompt": whisper_prompt
                 }
                 res_groq = requests.post("https://api.groq.com/openai/v1/audio/transcriptions", headers=headers, files=files, data=data)
-                res_groq.raise_for_status()
-                transcript += res_groq.text + "\n"
+                try:
+                    res_groq.raise_for_status()
+                    transcript += res_groq.text + "\n"
+                except requests.exceptions.HTTPError as e:
+                    if res_groq.status_code == 400:
+                        print(f"Groq Whisper rejected file {ap} (likely silent video). Skipping audio.")
+                    else:
+                        raise e
 
     if gemini_contents:
         # Gemini Vision for Images
